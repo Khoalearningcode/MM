@@ -43,11 +43,10 @@ if __name__ == "__main__":
 
             ep += 1
 
-    # Uncomment the following code to test your policy
-    # Reset the environment
-    print(info)
+        # Uncomment the following code to test your policy
+        # Reset the environment
+        print(info)
     observation, info = env.reset(seed=42)
-
 
     policy2210xxx = SmartGreedy()
     for _ in range(200):

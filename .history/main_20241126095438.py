@@ -38,16 +38,15 @@ if __name__ == "__main__":
         observation, reward, terminated, truncated, info = env.step(action)
 
         if terminated or truncated:
-            print(info)
+                        print(info)
             observation, info = env.reset(seed=ep)
 
             ep += 1
 
     # Uncomment the following code to test your policy
     # Reset the environment
-    print(info)
     observation, info = env.reset(seed=42)
-
+    print(info)
 
     policy2210xxx = SmartGreedy()
     for _ in range(200):
