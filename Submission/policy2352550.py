@@ -4,118 +4,126 @@ import numpy as np
 
 class SmartGreedy(Policy):
     def __init__(self):
-        super().__init__()
+        pass
 
     def get_action(self, observation, info):
-        """
-        Tìm kiếm hành động tốt nhất bằng cách tiếp cận tham lam.
-        """
-        products = observation["products"]
+        """Implements a smarter greedy approach"""
+        list_prods = observation["products"]
         stocks = observation["stocks"]
 
-        # Tìm tất cả các hành động hợp lệ
-        valid_actions = self._generate_valid_actions(products, stocks)
+        prod_size = [0, 0]
+        stock_idx = -1
+        pos_x, pos_y = 0, 0
 
-        # Chọn hành động tốt nhất dựa trên điểm đánh giá
-        best_action = max(
-            valid_actions, key=lambda action: action["score"], default=None
-        )
+        best_action = None
+        best_score = float("-inf")
 
-        # Nếu không có hành động hợp lệ, chọn ngẫu nhiên
-        if best_action is None:
-            return self._fallback_action(products, stocks)
-
-        return {
-            "stock_idx": best_action["stock_idx"],
-            "size": best_action["size"],
-            "position": best_action["position"],
-        }
-
-    def _generate_valid_actions(self, products, stocks):
-        """
-        Sinh tất cả các hành động hợp lệ từ danh sách sản phẩm và khổ giấy.
-        """
-        valid_actions = []
-
-        for product in products:
-            if product["quantity"] <= 0:
+        # For each product that has remaining quantity
+        for prod in list_prods:
+            if prod["quantity"] <= 0:
                 continue
 
-            product_width, product_height = product["size"]
+            prod_size = prod["size"]
+            prod_w, prod_h = prod_size
 
-            for stock_index, stock in enumerate(stocks):
-                stock_width, stock_height = self._get_stock_size(stock)
+            # Try each stock
+            for stock_idx, stock in enumerate(stocks):
+                stock_w, stock_h = self._get_stock_size_(stock)
 
-                if stock_width < product_width or stock_height < product_height:
+                # Skip if product doesn't fit
+                if stock_w < prod_w or stock_h < prod_h:
                     continue
 
-                # Tìm tất cả các vị trí đặt hợp lệ
-                for x in range(stock_width - product_width + 1):
-                    for y in range(stock_height - product_height + 1):
-                        if self._can_place(stock, (x, y), product["size"]):
-                            score = self._evaluate_position(
-                                x,
-                                y,
-                                product_width,
-                                product_height,
-                                stock_width,
-                                stock_height,
-                            )
-                            valid_actions.append(
-                                {
-                                    "stock_idx": stock_index,
-                                    "size": product["size"],
-                                    "position": (x, y),
-                                    "score": score,
-                                }
-                            )
+                # Try each possible position
+                for pos_x in range(stock_w - prod_w + 1):
+                    for pos_y in range(stock_h - prod_h + 1):
+                        if not self._can_place_(stock, (pos_x, pos_y), prod_size):
+                            continue
 
-        return valid_actions
+                        # Calculate score based on position
+                        score = self._calculate_placement_score(
+                            pos_x, pos_y, prod_w, prod_h, stock_w, stock_h
+                        )
 
-    def _evaluate_position(
-        self, x, y, product_width, product_height, stock_width, stock_height
+                        # Update best action if this is better
+                        if score > best_score:
+                            best_score = score
+                            best_action = {
+                                "stock_idx": stock_idx,
+                                "size": prod_size,
+                                "position": (pos_x, pos_y),
+                            }
+
+        # If no valid action found, fall back to random valid action
+        if best_action is None:
+            return self._get_random_valid_action(observation)
+
+        return best_action
+
+    def _calculate_placement_score(
+        self, pos_x, pos_y, prod_w, prod_h, stock_w, stock_h
     ):
-        """
-        Đánh giá một vị trí đặt sản phẩm dựa trên nhiều tiêu chí.
-        """
+        """Calculate a score for placing a product at a given position"""
         score = 0
 
-        # Ưu tiên các góc của khổ giấy
-        if (x == 0 or x + product_width == stock_width) and (
-            y == 0 or y + product_height == stock_height
+        # 1. Prefer corners
+        if (pos_x == 0 or pos_x + prod_w == stock_w) and (
+            pos_y == 0 or pos_y + prod_h == stock_h
         ):
-            score += 10
+            score += 10  # Tăng trọng số cho các góc
 
-        # Ưu tiên đặt gần mép
-        edge_bonus = (stock_width - product_width - x) + (
-            stock_height - product_height - y
-        )
-        score += edge_bonus * 0.5
+        # 2. Prefer edges
+        if (
+            pos_x == 0
+            or pos_x + prod_w == stock_w
+            or pos_y == 0
+            or pos_y + prod_h == stock_h
+        ):
+            score += 5
 
-        # Giảm điểm nếu nằm gần trung tâm
-        center_x = abs((x + product_width / 2) - stock_width / 2)
-        center_y = abs((y + product_height / 2) - stock_height / 2)
-        score = score - (center_x + center_y) * 0.2
+        # 3. Penalize central placements
+        center_x = abs((pos_x + prod_w / 2) - (stock_w / 2))
+        center_y = abs((pos_y + prod_h / 2) - (stock_h / 2))
+        score -= (center_x + center_y) * 0.05  # Giảm phạt để tránh mất cân bằng
+
+        # 4. Additional logic: Prefer minimizing unused area
+        unused_area = (stock_w * stock_h) - (prod_w * prod_h)
+        score -= unused_area * 0.01
 
         return score
 
-    def _fallback_action(self, products, stocks):
-        """
-        Sinh một hành động ngẫu nhiên khi không tìm thấy hành động hợp lệ.
-        """
-        for product in products:
-            if product["quantity"] <= 0:
+    def _get_random_valid_action(self, observation):
+        """Fallback method to get a random valid action"""
+        list_prods = observation["products"]
+
+        for prod in list_prods:
+            if prod["quantity"] <= 0:
                 continue
-            product_width, product_height = product["size"]
 
-            for stock_index, stock in enumerate(stocks):
-                stock_width, stock_height = self._get_stock_size(stock)
+            prod_size = prod["size"]
 
-                if stock_width < product_width or stock_height < product_height:
-                    return {
-                        "stock_idx": stock_index,
-                        "size": product["size"],
-                        "position": (0, 0),
-                    }
+            # Try each stock randomly
+            stock_indices = list(range(len(observation["stocks"])))
+            np.random.shuffle(stock_indices)
 
+            for stock_idx in stock_indices:
+                stock = observation["stocks"][stock_idx]
+                stock_w, stock_h = self._get_stock_size_(stock)
+
+                if stock_w < prod_size[0] or stock_h < prod_size[1]:
+                    continue
+
+                # Try random positions
+                for _ in range(10):  # Limit attempts
+                    pos_x = np.random.randint(0, stock_w - prod_size[0] + 1)
+                    pos_y = np.random.randint(0, stock_h - prod_size[1] + 1)
+
+                    if self._can_place_(stock, (pos_x, pos_y), prod_size):
+                        return {
+                            "stock_idx": stock_idx,
+                            "size": prod_size,
+                            "position": (pos_x, pos_y),
+                        }
+
+        # If still no valid action found, return a default action
         return {"stock_idx": 0, "size": [1, 1], "position": (0, 0)}

@@ -71,7 +71,7 @@ class GreedyPolicy(Policy):
 
     def get_action(self, observation, info):
         list_prods = observation["products"]
-
+        
         prod_size = [0, 0]
         stock_idx = -1
         pos_x, pos_y = 0, 0
